@@ -1,0 +1,1563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Cookie Order Filler!</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      touch-action: none;
+      user-select: none;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Palatino Linotype', 'Palatino', 'Book Antiqua', Georgia, serif;
+      overflow: hidden;
+    }
+
+    /* Force landscape message */
+    .rotate-message {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #4a2c2a;
+      color: white;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      font-size: 24px;
+      z-index: 1000;
+    }
+
+    .rotate-message span {
+      font-size: 60px;
+      animation: wiggle 0.5s ease-in-out infinite;
+    }
+
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(-10deg); }
+      50% { transform: rotate(10deg); }
+    }
+
+    @media (orientation: portrait) {
+      .rotate-message {
+        display: flex;
+      }
+      .game-container {
+        display: none;
+      }
+    }
+
+    /* Main game layout */
+    .game-container {
+      width: 100vw;
+      height: 100vh;
+      background: url('assets/parkinglot.jpg') center center / cover no-repeat;
+      position: relative;
+    }
+
+    /* HUD Modal */
+    .hud-modal {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      border-radius: 12px;
+      padding: 12px 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      z-index: 10;
+      min-width: 280px;
+      border: 3px solid #00b451;
+    }
+
+    .hud-stats {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+
+    .hud-stat {
+      text-align: center;
+    }
+
+    .hud-stat .label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: #666;
+      letter-spacing: 0.5px;
+    }
+
+    .hud-stat .value {
+      font-size: 20px;
+      font-weight: bold;
+      color: #000;
+    }
+
+    .hud-stat .value.timer {
+      font-family: 'Courier New', monospace;
+      color: #00b451;
+    }
+
+    .hud-stat .value.timer.running {
+      color: #ee3124;
+    }
+
+    .hud-divider {
+      width: 1px;
+      height: 30px;
+      background: #ddd;
+    }
+
+    .see-order-btn {
+      display: block;
+      width: 100%;
+      background: #00b451;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      font-size: 14px;
+      font-family: inherit;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .see-order-btn:hover {
+      background: #009a4e;
+    }
+
+    .see-order-btn.hidden {
+      display: none;
+    }
+
+    /* Car area (left side - supply) */
+    .car-area {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .car-image {
+      position: absolute;
+      z-index: 5;
+      pointer-events: none;
+      /* Default position matching layout defaults */
+      left: -3%;
+      bottom: 9%;
+      width: 59%;
+    }
+
+    /* Individual cookie boxes in trunk */
+    .trunk-box {
+      position: absolute;
+      cursor: grab;
+      transition: transform 0.15s;
+      object-fit: contain;
+      z-index: 6;
+      pointer-events: auto;
+    }
+
+    .trunk-box:hover {
+      transform: scale(1.1);
+    }
+
+    .trunk-box:active {
+      cursor: grabbing;
+    }
+
+    .trunk-box.disabled {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    /* Pallet area (right side - drop zone) */
+    .pallet-area {
+      position: absolute;
+      pointer-events: none;
+      /* Default position matching layout defaults */
+      right: 5%;
+      bottom: 5%;
+      width: 35%;
+    }
+
+    .pallet-image {
+      width: 100%;
+      height: auto;
+      pointer-events: none;
+    }
+
+    .pallet-dropzone {
+      position: absolute;
+      top: 5%;
+      left: 10%;
+      right: 10%;
+      bottom: 30%;
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      justify-content: center;
+      padding: 10px;
+      gap: 5px;
+      pointer-events: auto;
+    }
+
+    .pallet-area.drop-hover .pallet-dropzone {
+      background: rgba(76, 175, 80, 0.3);
+      border-radius: 10px;
+    }
+
+    .pallet-cookie {
+      position: fixed;
+      /* width and height set dynamically via JS using layout.globalBoxSize */
+      object-fit: contain;
+      cursor: pointer;
+      pointer-events: auto;
+      z-index: 50;
+    }
+
+    /* Done button */
+    .done-btn {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #00b451;
+      color: white;
+      border: none;
+      padding: 14px 50px;
+      font-size: 18px;
+      font-family: inherit;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      z-index: 20;
+      display: none;
+      transition: background 0.2s;
+    }
+
+    .done-btn:hover {
+      background: #009a4e;
+    }
+
+    .done-btn.show {
+      display: block;
+    }
+
+    /* Dragging box */
+    .dragging-box {
+      position: fixed;
+      pointer-events: none;
+      z-index: 100;
+      transition: transform 0.1s ease-out;
+    }
+
+    .dragging-box img {
+      /* width and height set dynamically via JS using layout.globalBoxSize */
+      object-fit: contain;
+    }
+
+    /* ==========================================
+       ORDER FORM OVERLAY
+       ========================================== */
+    .order-form-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 300;
+    }
+
+    .order-form-overlay.hidden {
+      display: none;
+    }
+
+    /* Peek mode - smaller, positioned, semi-transparent */
+    .order-form-overlay.peek-mode {
+      background: transparent;
+      pointer-events: none;
+      align-items: flex-start;
+      padding-top: 80px;
+    }
+
+    .order-form-overlay.peek-mode .order-form {
+      pointer-events: auto;
+      opacity: 0.95;
+      max-width: 350px;
+      padding: 15px 25px;
+    }
+
+    .order-form-overlay.peek-mode .start-btn {
+      display: none;
+    }
+
+    .order-form-overlay.peek-mode .close-peek-btn {
+      display: block;
+    }
+
+    .order-form {
+      background: white;
+      border-radius: 12px;
+      padding: 25px 35px;
+      max-width: 450px;
+      width: 90%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+      border: 3px solid #00b451;
+    }
+
+    .order-form-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px solid #00b451;
+      padding-bottom: 10px;
+      margin-bottom: 15px;
+    }
+
+    .order-form-header h2 {
+      margin: 0;
+      color: #00b451;
+      font-size: 16px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+
+    .order-form-header .order-number {
+      background: #00b451;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 15px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .customer-name {
+      font-size: 20px;
+      font-weight: bold;
+      color: #000;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .order-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .order-table th {
+      text-align: left;
+      padding: 8px;
+      background: #f5f5f5;
+      font-size: 11px;
+      color: #666;
+      border-bottom: 2px solid #ddd;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .order-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid #eee;
+      font-size: 15px;
+      color: #000;
+    }
+
+    .order-table .cookie-name {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .order-table .cookie-color {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .order-table .qty {
+      font-weight: bold;
+      font-size: 18px;
+      text-align: center;
+      color: #00b451;
+    }
+
+    .start-btn {
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      background: #00b451;
+      color: white;
+      border: none;
+      padding: 14px;
+      font-size: 18px;
+      font-family: inherit;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .start-btn:hover {
+      background: #009a4e;
+    }
+
+    .close-peek-btn {
+      display: none;
+      width: 100%;
+      margin-top: 15px;
+      background: #666;
+      color: white;
+      border: none;
+      padding: 10px;
+      font-size: 14px;
+      font-family: inherit;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .close-peek-btn:hover {
+      background: #555;
+    }
+
+    /* ==========================================
+       RESULTS OVERLAY
+       ========================================== */
+    .results-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 300;
+    }
+
+    .results-overlay.hidden {
+      display: none;
+    }
+
+    .results-box {
+      background: white;
+      border-radius: 12px;
+      padding: 30px 50px;
+      text-align: center;
+      animation: popIn 0.3s ease-out;
+      border: 3px solid #00b451;
+    }
+
+    @keyframes popIn {
+      0% { transform: scale(0.5); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .results-box h2 {
+      margin: 0 0 10px 0;
+      font-size: 24px;
+      font-weight: bold;
+    }
+
+    .results-box h2.success {
+      color: #00b451;
+    }
+
+    .results-box h2.fail {
+      color: #ee3124;
+    }
+
+    .results-box .time {
+      font-size: 42px;
+      font-weight: bold;
+      color: #000;
+      margin: 15px 0;
+      font-family: 'Courier New', monospace;
+    }
+
+    .results-box .details {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    .results-box .mistake {
+      color: #ee3124;
+      font-size: 14px;
+      margin: 10px 0;
+    }
+
+    .next-btn {
+      background: #00b451;
+      color: white;
+      border: none;
+      padding: 14px 40px;
+      font-size: 16px;
+      font-family: inherit;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .next-btn:hover {
+      background: #009a4e;
+    }
+
+    /* ==========================================
+       WELCOME/TUTORIAL OVERLAY
+       ========================================== */
+    .welcome-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 400;
+    }
+
+    .welcome-overlay.hidden {
+      display: none;
+    }
+
+    .welcome-box {
+      background: white;
+      border-radius: 16px;
+      padding: 35px 45px;
+      text-align: center;
+      max-width: 500px;
+      width: 90%;
+      animation: popIn 0.4s ease-out;
+      border: 4px solid #00b451;
+    }
+
+    .welcome-box h1 {
+      margin: 0 0 10px 0;
+      font-size: 28px;
+      color: #00b451;
+    }
+
+    .welcome-box .subtitle {
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 25px;
+    }
+
+    .welcome-box .instructions {
+      background: #f9f9f9;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 25px;
+      text-align: left;
+    }
+
+    .welcome-box .instructions p {
+      margin: 0 0 12px 0;
+      font-size: 15px;
+      color: #333;
+      line-height: 1.5;
+    }
+
+    .welcome-box .instructions p:last-child {
+      margin-bottom: 0;
+    }
+
+    .welcome-box .instructions strong {
+      color: #00b451;
+    }
+
+    .play-btn {
+      background: #00b451;
+      color: white;
+      border: none;
+      padding: 16px 50px;
+      font-size: 20px;
+      font-family: inherit;
+      font-weight: bold;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .play-btn:hover {
+      background: #009a4e;
+      transform: scale(1.05);
+    }
+
+    /* ==========================================
+       ORDER LINK BUTTON
+       ========================================== */
+    .order-link {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: #00b451;
+      color: white;
+      text-decoration: none;
+      padding: 10px 18px;
+      border-radius: 20px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: bold;
+      z-index: 500;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .order-link:hover {
+      background: #009a4e;
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <!-- Rotate device message -->
+  <div class="rotate-message">
+    <span>📱</span>
+    <p>Turn your device sideways!</p>
+  </div>
+
+  <!-- Order Link -->
+  <a href="https://digitalcookie.girlscouts.org/scout/epiphany715616" target="_blank" class="order-link">Place an order!</a>
+
+  <!-- WELCOME/TUTORIAL OVERLAY -->
+  <div class="welcome-overlay" id="welcomeOverlay">
+    <div class="welcome-box">
+      <h1>Cookie Order Filler!</h1>
+      <div class="subtitle">Help fill Girl Scout cookie orders!</div>
+      <div class="instructions">
+        <p><strong>1.</strong> Memorize the customer's order - which cookies and how many of each.</p>
+        <p><strong>2.</strong> Drag cookie boxes from the car trunk to the pallet.</p>
+        <p><strong>3.</strong> Hit "DONE!" when you think you've got it right!</p>
+        <p><strong>Tip:</strong> Tap a box on the pallet to remove it if you make a mistake.</p>
+      </div>
+      <button class="play-btn" onclick="startGame()">LET'S GO!</button>
+    </div>
+  </div>
+
+  <!-- ORDER FORM OVERLAY -->
+  <div class="order-form-overlay hidden" id="orderFormOverlay">
+    <div class="order-form">
+      <div class="order-form-header">
+        <h2>Girl Scout Cookies</h2>
+        <span class="order-number" id="orderNumber">Order #1</span>
+      </div>
+      <div class="customer-name" id="customerName">Loading...</div>
+      <table class="order-table">
+        <thead>
+          <tr>
+            <th>Cookie</th>
+            <th style="text-align:center">Qty</th>
+          </tr>
+        </thead>
+        <tbody id="orderTableBody">
+          <!-- Filled by JS -->
+        </tbody>
+      </table>
+      <button class="start-btn" onclick="startOrder()">MEMORIZE & START!</button>
+      <button class="close-peek-btn" onclick="closePeek()">Got It!</button>
+    </div>
+  </div>
+
+  <!-- RESULTS OVERLAY -->
+  <div class="results-overlay hidden" id="resultsOverlay">
+    <div class="results-box">
+      <h2 id="resultTitle" class="success">Order Complete!</h2>
+      <div class="time" id="resultTime">0.00s</div>
+      <div class="details" id="resultDetails"></div>
+      <div class="mistake hidden" id="resultMistake"></div>
+      <button class="next-btn" onclick="nextOrder()">NEXT ORDER</button>
+    </div>
+  </div>
+
+  <!-- Main game -->
+  <div class="game-container" id="gameContainer">
+    <!-- HUD Modal -->
+    <div class="hud-modal">
+      <div class="hud-stats">
+        <div class="hud-stat">
+          <div class="label">Orders</div>
+          <div class="value" id="ordersCompleted">0</div>
+        </div>
+        <div class="hud-divider"></div>
+        <div class="hud-stat">
+          <div class="label">Time</div>
+          <div class="value timer" id="currentTimer">0.00</div>
+        </div>
+        <div class="hud-divider"></div>
+        <div class="hud-stat">
+          <div class="label">Best</div>
+          <div class="value" id="bestTime">--</div>
+        </div>
+      </div>
+      <button class="see-order-btn hidden" id="seeOrderBtn" onclick="peekOrder()">See Order</button>
+    </div>
+
+    <!-- Car with trunk (left - supply) -->
+    <div class="car-area">
+      <img src="assets/car.png" class="car-image" id="carImage" alt="Car trunk">
+      <div id="trunkBoxes">
+        <!-- Individual cookie boxes populated by JS -->
+      </div>
+    </div>
+
+    <!-- Pallet (right - drop zone) -->
+    <div class="pallet-area" id="palletArea">
+      <img src="assets/palette.png" class="pallet-image" alt="Pallet">
+      <div class="pallet-dropzone" id="palletDropzone">
+        <!-- Cookies dropped here -->
+      </div>
+    </div>
+
+    <!-- Done button -->
+    <button class="done-btn" id="doneBtn" onclick="checkOrder()">DONE!</button>
+  </div>
+
+  <!-- Dragging element -->
+  <div class="dragging-box" id="draggingBox" style="display: none;">
+    <img id="draggingImg" src="" alt="">
+  </div>
+
+  <script>
+    // ============================================
+    // COOKIE DATA (with sprite paths and colors)
+    // ============================================
+    const cookieTypes = [
+      { id: 'thinmints', name: 'Thin Mints', sprite: 'assets/sprites/cookieBoxes/thinmints.png', color: '#008c3c' },
+      { id: 'samoas', name: 'Samoas', sprite: 'assets/sprites/cookieBoxes/samoas.png', color: '#501464' },
+      { id: 'tagalongs', name: 'Tagalongs', sprite: 'assets/sprites/cookieBoxes/tagalongs.png', color: '#dc2814' },
+      { id: 'dosidos', name: 'Do-Si-Dos', sprite: 'assets/sprites/cookieBoxes/dosidos.png', color: '#dc7814' },
+      { id: 'trefoils', name: 'Trefoils', sprite: 'assets/sprites/cookieBoxes/trefoils.png', color: '#0064b4' },
+      { id: 'lemonups', name: 'Lemon-Ups', sprite: 'assets/sprites/cookieBoxes/lemonups.png', color: '#f0c800' },
+      { id: 'adventurefuls', name: 'Adventurefuls', sprite: 'assets/sprites/cookieBoxes/adventurfuls.png', color: '#dcc8a0' },
+      { id: 'smores', name: 'Exploreamores', sprite: 'assets/sprites/cookieBoxes/exploreamores.png', color: '#dc7878' },
+      { id: 'toffeetastic', name: 'Toffee-tastic', sprite: 'assets/sprites/cookieBoxes/toffe-tastic.png', color: '#28a0a0' }
+    ];
+
+    // ============================================
+    // LAYOUT DEFAULTS
+    // ============================================
+    const defaultLayout = {
+      car: {
+        left: -3,
+        bottom: 9,
+        width: 59
+      },
+      pallet: {
+        right: 5,
+        bottom: 5,
+        width: 35
+      },
+      collider: {
+        groundY: 51,      // % down from top of pallet
+        wallInset: 10,    // % inset from edges
+        wallHeight: 200   // px height of walls
+      },
+      globalBoxSize: {
+        width: 110,
+        height: 98
+      },
+      boxes: {
+        thinmints:    { left: 17, bottom: 33, physicsWidth: 113, physicsHeight: 61 },
+        samoas:       { left: 15, bottom: 41, physicsWidth: 57, physicsHeight: 98 },
+        tagalongs:    { left: 24, bottom: 33, physicsWidth: 108, physicsHeight: 51 },
+        dosidos:      { left: 19, bottom: 41, physicsWidth: 60, physicsHeight: 98 },
+        trefoils:     { left: 24, bottom: 39, physicsWidth: 110, physicsHeight: 72 },
+        lemonups:     { left: 30, bottom: 33, physicsWidth: 110, physicsHeight: 63 },
+        adventurefuls:{ left: 30, bottom: 39, physicsWidth: 110, physicsHeight: 62 },
+        smores:       { left: 24, bottom: 47, physicsWidth: 59, physicsHeight: 98 },
+        toffeetastic: { left: 30, bottom: 47, physicsWidth: 43, physicsHeight: 98 }
+      }
+    };
+
+    let layout = JSON.parse(JSON.stringify(defaultLayout));
+
+    // ============================================
+    // RESPONSIVE SCALING SYSTEM
+    // ============================================
+    // Reference width at which the pixel values are "correct"
+    const REFERENCE_WIDTH = 1920;
+
+    // Get current scale factor based on viewport width
+    function getScale() {
+      return window.innerWidth / REFERENCE_WIDTH;
+    }
+
+    // Scale a base pixel value to current viewport
+    function scaledPx(basePx) {
+      return basePx * getScale();
+    }
+
+    // Get scaled global box size
+    function getScaledBoxSize() {
+      const scale = getScale();
+      return {
+        width: layout.globalBoxSize.width * scale,
+        height: layout.globalBoxSize.height * scale
+      };
+    }
+
+    // Get scaled physics dimensions for a cookie
+    function getScaledPhysics(cookieId) {
+      const scale = getScale();
+      return {
+        width: layout.boxes[cookieId].physicsWidth * scale,
+        height: layout.boxes[cookieId].physicsHeight * scale
+      };
+    }
+
+    // Debounce helper for resize events
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    // ============================================
+    // SOUND SYSTEM
+    // ============================================
+    const sounds = {
+      pickup: new Audio('assets/pickup.mp3'),
+      putdown: new Audio('assets/putdown.mp3'),
+      yay: new Audio('assets/yay.mp3'),
+      ohno: new Audio('assets/ohno.mp3'),
+      music: new Audio('assets/GirlscoutCookies.mp3')
+    };
+
+    // Configure background music to loop
+    sounds.music.loop = true;
+    sounds.music.volume = 0.4;
+
+    // Sound effects at full volume
+    sounds.pickup.volume = 0.7;
+    sounds.putdown.volume = 0.7;
+    sounds.yay.volume = 0.4;
+    sounds.ohno.volume = 0.8;
+
+    let musicStarted = false;
+
+    function playSound(name) {
+      if (sounds[name]) {
+        // Clone and play for overlapping sounds
+        const sound = sounds[name].cloneNode();
+        sound.volume = sounds[name].volume;
+        sound.play().catch(() => {}); // Ignore autoplay errors
+      }
+    }
+
+    function startMusic() {
+      if (!musicStarted) {
+        sounds.music.play().catch(() => {});
+        musicStarted = true;
+      }
+    }
+
+    // ============================================
+    // START GAME (from welcome screen)
+    // ============================================
+    function startGame() {
+      document.getElementById('welcomeOverlay').classList.add('hidden');
+      startMusic(); // Start background music on user interaction
+      showOrderForm();
+    }
+
+    // ============================================
+    // MATTER.JS SETUP
+    // ============================================
+    const Engine = Matter.Engine,
+          World = Matter.World,
+          Bodies = Matter.Bodies,
+          Body = Matter.Body,
+          Events = Matter.Events;
+
+    let engine;
+    let world;
+    let palletGround = null;
+    let palletWallLeft = null;
+    let palletWallRight = null;
+    let screenBoundaries = [];
+    let physicsBoxes = []; // { body, element, cookieId }
+
+    function initPhysics() {
+      engine = Engine.create();
+      world = engine.world;
+      engine.world.gravity.y = 1; // Gravity strength
+
+      // Create screen boundaries to catch any escaping boxes
+      createScreenBoundaries();
+
+      // Run physics loop
+      (function update() {
+        Engine.update(engine, 1000 / 60);
+        syncPhysicsToDOM();
+        requestAnimationFrame(update);
+      })();
+    }
+
+    function createScreenBoundaries() {
+      // Remove old boundaries if they exist
+      screenBoundaries.forEach(b => World.remove(world, b));
+      screenBoundaries = [];
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const thickness = 50;
+
+      // Bottom of screen (catches falling boxes)
+      const bottom = Bodies.rectangle(w/2, h + thickness/2, w * 2, thickness, {
+        isStatic: true,
+        label: 'screenBottom'
+      });
+
+      // Left side of screen
+      const left = Bodies.rectangle(-thickness/2, h/2, thickness, h * 2, {
+        isStatic: true,
+        label: 'screenLeft'
+      });
+
+      // Right side of screen
+      const right = Bodies.rectangle(w + thickness/2, h/2, thickness, h * 2, {
+        isStatic: true,
+        label: 'screenRight'
+      });
+
+      screenBoundaries = [bottom, left, right];
+      World.add(world, screenBoundaries);
+    }
+
+    function createPalletColliders() {
+      // Remove old colliders if they exist
+      if (palletGround) World.remove(world, palletGround);
+      if (palletWallLeft) World.remove(world, palletWallLeft);
+      if (palletWallRight) World.remove(world, palletWallRight);
+
+      const palletArea = document.getElementById('palletArea');
+      const rect = palletArea.getBoundingClientRect();
+
+      // Use layout settings for collider positions (scale wall height with viewport)
+      const groundYPercent = layout.collider.groundY / 100;
+      const wallInsetPercent = layout.collider.wallInset / 100;
+      const wallHeight = scaledPx(layout.collider.wallHeight);
+      const wallThickness = scaledPx(15);
+
+      // Ground (top surface of pallet) - the bottom of the "box"
+      const groundY = rect.top + rect.height * groundYPercent;
+      const leftWallX = rect.left + rect.width * wallInsetPercent;
+      const rightWallX = rect.right - rect.width * wallInsetPercent;
+      const groundWidth = rightWallX - leftWallX + wallThickness; // Extend to meet walls
+      const groundX = (leftWallX + rightWallX) / 2;
+
+      palletGround = Bodies.rectangle(groundX, groundY, groundWidth, wallThickness, {
+        isStatic: true,
+        friction: 0.9,
+        restitution: 0.1,
+        label: 'ground'
+      });
+
+      // Side walls - form the left and right sides of the "box"
+      // Walls extend from ground level upward (open top)
+      const wallCenterY = groundY - wallHeight / 2;
+
+      palletWallLeft = Bodies.rectangle(leftWallX, wallCenterY, wallThickness, wallHeight, {
+        isStatic: true,
+        friction: 0.3,
+        restitution: 0.2,
+        label: 'wallLeft'
+      });
+
+      palletWallRight = Bodies.rectangle(rightWallX, wallCenterY, wallThickness, wallHeight, {
+        isStatic: true,
+        friction: 0.3,
+        restitution: 0.2,
+        label: 'wallRight'
+      });
+
+      World.add(world, [palletGround, palletWallLeft, palletWallRight]);
+    }
+
+    function syncPhysicsToDOM() {
+      physicsBoxes.forEach(item => {
+        const { body, element, visualWidth, visualHeight } = item;
+        if (element && body) {
+          // Use visual dimensions for centering the DOM element on the physics body
+          element.style.left = (body.position.x - visualWidth / 2) + 'px';
+          element.style.top = (body.position.y - visualHeight / 2) + 'px';
+          element.style.transform = `rotate(${body.angle}rad)`;
+        }
+      });
+    }
+
+    function clearPhysicsBoxes() {
+      physicsBoxes.forEach(item => {
+        if (item.body) World.remove(world, item.body);
+        if (item.element) item.element.remove();
+      });
+      physicsBoxes = [];
+    }
+
+    // ============================================
+    // GAME STATE
+    // ============================================
+    let currentOrder = [];
+    let palletContents = []; // Cookie IDs on pallet
+    let orderNumber = 0;
+    let ordersCompleted = 0;
+    let totalTimeMs = 0;
+    let bestTimeMs = null;
+    let timerStartTime = null;
+    let timerInterval = null;
+    let gamePhase = 'memorize'; // 'memorize' | 'filling'
+    let isDragging = false;
+    let dragCookie = null;
+    let startPos = { x: 0, y: 0 };
+    let lastPalletRect = null; // Track pallet position for resize handling
+
+    // ============================================
+    // FUNNY NAME GENERATOR
+    // ============================================
+    const funnyFirstNames = [
+      'Barnaby', 'Winifred', 'Cornelius', 'Gertrude', 'Humphrey',
+      'Mildred', 'Reginald', 'Bertha', 'Archibald', 'Eugenia',
+      'Mortimer', 'Prudence', 'Thaddeus', 'Hortense', 'Bartholomew',
+      'Edna', 'Cuthbert', 'Myrtle', 'Ignatius', 'Blanche',
+      'Percival', 'Agatha', 'Zebediah', 'Brunhilde', 'Aloysius',
+      'Griselda', 'Engelbert', 'Ermintrude', 'Balthazar', 'Clementine'
+    ];
+
+    const funnyLastNames = [
+      'Wigglebottom', 'Snickerdoodle', 'Bumblebee', 'Fudgeworth', 'Crumbles',
+      'Wobbleton', 'Gigglesnort', 'Puddingface', 'Noodlebrain', 'Waffleton',
+      'Sprocketsworth', 'Dingleberry', 'Mcfluffins', 'Bananapants', 'Chickenwing',
+      'Buttersworth', 'Picklebottom', 'Snugglepuff', 'Waddlesworth', 'Goosebump',
+      'Twinkletoes', 'Flapdoodle', 'Bumblebutt', 'Squishface', 'Jellybean',
+      'Muffintop', 'Noodlearms', 'Biscuitbarrel', 'Wobblekins', 'Tumbleweed'
+    ];
+
+    const titles = [
+      'Mrs.', 'Mr.', 'Dr.', 'Professor', 'Captain', 'Sir', 'Lady',
+      'Baron', 'Countess', 'Mayor', 'Judge', 'Coach', 'Grandma', 'Grandpa',
+      'Uncle', 'Aunt', 'Officer', 'Chef', 'Principal'
+    ];
+
+    function generateFunnyName() {
+      const title = titles[Math.floor(Math.random() * titles.length)];
+      const first = funnyFirstNames[Math.floor(Math.random() * funnyFirstNames.length)];
+      const last = funnyLastNames[Math.floor(Math.random() * funnyLastNames.length)];
+
+      if (Math.random() < 0.3) {
+        return `${title} ${last}`;
+      }
+      return `${title} ${first} ${last}`;
+    }
+
+    // ============================================
+    // GENERATE ORDER
+    // ============================================
+    function generateOrder() {
+      const numTypes = Math.floor(Math.random() * 4) + 2; // 2-5 types
+      const shuffled = [...cookieTypes].sort(() => Math.random() - 0.5);
+      const selected = shuffled.slice(0, numTypes);
+
+      return selected.map(cookie => ({
+        ...cookie,
+        quantity: Math.floor(Math.random() * 4) + 1 // 1-4 boxes
+      }));
+    }
+
+    // ============================================
+    // SHOW ORDER FORM
+    // ============================================
+    function showOrderForm() {
+      orderNumber++;
+      currentOrder = generateOrder();
+      palletContents = [];
+      gamePhase = 'memorize';
+
+      document.getElementById('orderNumber').textContent = `Order #${orderNumber}`;
+      document.getElementById('customerName').textContent = generateFunnyName();
+
+      const tbody = document.getElementById('orderTableBody');
+      tbody.innerHTML = '';
+
+      currentOrder.forEach(cookie => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>
+            <div class="cookie-name">
+              <div class="cookie-color" style="background: ${cookie.color}"></div>
+              ${cookie.name}
+            </div>
+          </td>
+          <td class="qty">${cookie.quantity}</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      document.getElementById('orderFormOverlay').classList.remove('hidden');
+      document.getElementById('orderFormOverlay').classList.remove('peek-mode');
+      document.getElementById('resultsOverlay').classList.add('hidden');
+      document.getElementById('doneBtn').classList.remove('show');
+      document.getElementById('seeOrderBtn').classList.add('hidden');
+
+      // Clear pallet contents and physics
+      palletContents = [];
+      clearPhysicsBoxes();
+
+      // Reset timer display
+      document.getElementById('currentTimer').textContent = '0.00';
+      document.getElementById('currentTimer').classList.remove('running');
+    }
+
+    // ============================================
+    // START ORDER (after memorizing)
+    // ============================================
+    function startOrder() {
+      gamePhase = 'filling';
+      document.getElementById('orderFormOverlay').classList.add('hidden');
+      document.getElementById('orderFormOverlay').classList.remove('peek-mode');
+      document.getElementById('doneBtn').classList.add('show');
+      document.getElementById('seeOrderBtn').classList.remove('hidden');
+
+      // Start timer
+      timerStartTime = Date.now();
+      document.getElementById('currentTimer').classList.add('running');
+      timerInterval = setInterval(updateTimer, 50);
+
+      // Render trunk boxes
+      renderTrunkBoxes();
+
+      // Create/update pallet physics colliders
+      setTimeout(() => {
+        createPalletColliders();
+        // Initialize lastPalletRect for resize tracking
+        const palletArea = document.getElementById('palletArea');
+        lastPalletRect = palletArea.getBoundingClientRect();
+      }, 100); // Small delay to ensure layout is ready
+    }
+
+    function updateTimer() {
+      const elapsed = (Date.now() - timerStartTime) / 1000;
+      document.getElementById('currentTimer').textContent = elapsed.toFixed(2);
+    }
+
+    // Peek at order during gameplay
+    function peekOrder() {
+      const overlay = document.getElementById('orderFormOverlay');
+      overlay.classList.remove('hidden');
+      overlay.classList.add('peek-mode');
+    }
+
+    function closePeek() {
+      const overlay = document.getElementById('orderFormOverlay');
+      overlay.classList.add('hidden');
+      overlay.classList.remove('peek-mode');
+    }
+
+    // ============================================
+    // CHECK ORDER
+    // ============================================
+    function checkOrder() {
+      // Stop timer
+      clearInterval(timerInterval);
+      const elapsedMs = Date.now() - timerStartTime;
+      const elapsedSec = elapsedMs / 1000;
+
+      document.getElementById('currentTimer').classList.remove('running');
+
+      // Check if order is correct
+      let isCorrect = true;
+      let mistakes = [];
+
+      // Build expected counts
+      const expected = {};
+      currentOrder.forEach(c => {
+        expected[c.id] = c.quantity;
+      });
+
+      // Build actual counts from pallet
+      const actual = {};
+      palletContents.forEach(id => {
+        actual[id] = (actual[id] || 0) + 1;
+      });
+
+      // Compare
+      for (const id in expected) {
+        const exp = expected[id];
+        const act = actual[id] || 0;
+        if (act !== exp) {
+          isCorrect = false;
+          const cookie = cookieTypes.find(c => c.id === id);
+          if (act < exp) {
+            mistakes.push(`Missing ${exp - act} ${cookie.name}`);
+          } else {
+            mistakes.push(`Extra ${act - exp} ${cookie.name}`);
+          }
+        }
+      }
+
+      // Check for extras not in order
+      for (const id in actual) {
+        if (!expected[id]) {
+          isCorrect = false;
+          const cookie = cookieTypes.find(c => c.id === id);
+          mistakes.push(`${actual[id]} ${cookie.name} not in order!`);
+        }
+      }
+
+      // Show results
+      const resultTitle = document.getElementById('resultTitle');
+      const resultTime = document.getElementById('resultTime');
+      const resultDetails = document.getElementById('resultDetails');
+      const resultMistake = document.getElementById('resultMistake');
+
+      if (isCorrect) {
+        playSound('yay'); // Play success sound
+        resultTitle.textContent = 'Order Complete!';
+        resultTitle.className = 'success';
+        ordersCompleted++;
+        totalTimeMs += elapsedMs;
+
+        if (bestTimeMs === null || elapsedMs < bestTimeMs) {
+          bestTimeMs = elapsedMs;
+        }
+
+        resultDetails.textContent = `${currentOrder.reduce((a, c) => a + c.quantity, 0)} boxes filled correctly!`;
+        resultMistake.classList.add('hidden');
+      } else {
+        playSound('ohno'); // Play fail sound
+        resultTitle.textContent = 'Not Quite Right...';
+        resultTitle.className = 'fail';
+        resultDetails.textContent = 'Check your order and try again!';
+        resultMistake.textContent = mistakes.join(' | ');
+        resultMistake.classList.remove('hidden');
+      }
+
+      resultTime.textContent = elapsedSec.toFixed(2) + 's';
+
+      // Update stats display
+      document.getElementById('ordersCompleted').textContent = ordersCompleted;
+      document.getElementById('bestTime').textContent = bestTimeMs ? (bestTimeMs / 1000).toFixed(2) : '--';
+
+      document.getElementById('resultsOverlay').classList.remove('hidden');
+      document.getElementById('doneBtn').classList.remove('show');
+    }
+
+    // ============================================
+    // NEXT ORDER
+    // ============================================
+    function nextOrder() {
+      showOrderForm();
+    }
+
+    // ============================================
+    // RENDER TRUNK BOXES
+    // ============================================
+    function renderTrunkBoxes() {
+      const container = document.getElementById('trunkBoxes');
+      container.innerHTML = '';
+
+      cookieTypes.forEach(cookie => {
+        const box = document.createElement('img');
+        box.className = 'trunk-box';
+        box.id = `box-${cookie.id}`;
+        box.src = cookie.sprite;
+        box.alt = cookie.name;
+        box.dataset.cookieId = cookie.id;
+        box.dataset.cookieName = cookie.name;
+        box.dataset.cookieSprite = cookie.sprite;
+
+        const scaledSize = getScaledBoxSize();
+        box.style.left = layout.boxes[cookie.id].left + '%';
+        box.style.bottom = layout.boxes[cookie.id].bottom + '%';
+        box.style.width = scaledSize.width + 'px';
+        box.style.height = scaledSize.height + 'px';
+
+        if (gamePhase !== 'filling') {
+          box.classList.add('disabled');
+        }
+
+        box.addEventListener('touchstart', handleDragStart);
+        box.addEventListener('mousedown', handleDragStart);
+
+        container.appendChild(box);
+      });
+
+      applyLayout();
+    }
+
+    // ============================================
+    // DRAG AND DROP
+    // ============================================
+    function handleDragStart(e) {
+      if (gamePhase !== 'filling') return;
+
+      e.preventDefault();
+
+      const touch = e.touches ? e.touches[0] : e;
+      const box = e.target;
+
+      isDragging = true;
+      playSound('pickup'); // Play pickup sound
+      const cookieId = box.dataset.cookieId;
+      dragCookie = {
+        id: cookieId,
+        name: box.dataset.cookieName,
+        sprite: box.dataset.cookieSprite,
+        // Physics collider dimensions (can differ from visual size)
+        physicsWidth: layout.boxes[cookieId].physicsWidth,
+        physicsHeight: layout.boxes[cookieId].physicsHeight
+      };
+
+      startPos = { x: touch.clientX, y: touch.clientY };
+
+      const dragEl = document.getElementById('draggingBox');
+      const dragImg = document.getElementById('draggingImg');
+      dragEl.style.display = 'block';
+      dragImg.src = dragCookie.sprite;
+      // Set dragging image to scaled visual size
+      const scaledSize = getScaledBoxSize();
+      dragImg.style.width = scaledSize.width + 'px';
+      dragImg.style.height = scaledSize.height + 'px';
+      updateDragPosition(touch.clientX, touch.clientY);
+    }
+
+    function handleDragMove(e) {
+      if (!isDragging) return;
+      e.preventDefault();
+
+      const touch = e.touches ? e.touches[0] : e;
+      updateDragPosition(touch.clientX, touch.clientY);
+      checkPalletHover(touch.clientX, touch.clientY);
+    }
+
+    function updateDragPosition(x, y) {
+      const dragEl = document.getElementById('draggingBox');
+      // Center the dragging box on the cursor using scaled visual size
+      const scaledSize = getScaledBoxSize();
+      dragEl.style.left = (x - scaledSize.width / 2) + 'px';
+      dragEl.style.top = (y - scaledSize.height / 2) + 'px';
+    }
+
+    function checkPalletHover(x, y) {
+      const palletArea = document.getElementById('palletArea');
+      const rect = palletArea.getBoundingClientRect();
+
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        palletArea.classList.add('drop-hover');
+      } else {
+        palletArea.classList.remove('drop-hover');
+      }
+    }
+
+    function handleDragEnd(e) {
+      if (!isDragging) return;
+
+      const touch = e.changedTouches ? e.changedTouches[0] : e;
+      const palletArea = document.getElementById('palletArea');
+      const dropzone = document.getElementById('palletDropzone');
+      const rect = palletArea.getBoundingClientRect();
+
+      // Check if dropped on pallet area (be generous with the drop zone)
+      if (touch.clientX >= rect.left - 50 && touch.clientX <= rect.right + 50 &&
+          touch.clientY >= rect.top - 100 && touch.clientY <= rect.bottom) {
+
+        playSound('putdown'); // Play putdown sound
+
+        // Add cookie to pallet contents for scoring
+        palletContents.push(dragCookie.id);
+
+        // Create DOM element (append to body for fixed positioning)
+        const img = document.createElement('img');
+        img.className = 'pallet-cookie';
+        img.src = dragCookie.sprite;
+        img.alt = dragCookie.name;
+        img.dataset.cookieId = dragCookie.id;
+        // Use scaled size for visuals
+        const scaledSize = getScaledBoxSize();
+        const visualWidth = scaledSize.width;
+        const visualHeight = scaledSize.height;
+        img.style.width = visualWidth + 'px';
+        img.style.height = visualHeight + 'px';
+        document.body.appendChild(img);
+
+        // Create physics body - use scaled per-cookie physics dimensions
+        const scaledPhysics = getScaledPhysics(dragCookie.id);
+        const physicsWidth = scaledPhysics.width;
+        const physicsHeight = scaledPhysics.height;
+        const dropX = Math.max(rect.left + 30, Math.min(rect.right - 30, touch.clientX));
+        const dropY = touch.clientY;
+
+        const body = Bodies.rectangle(dropX, dropY, physicsWidth, physicsHeight, {
+          friction: 0.8,
+          restitution: 0.05, // Very little bounce to prevent escaping
+          density: 0.002,
+          frictionAir: 0.02, // Air resistance to slow down
+          label: 'cookie-' + dragCookie.id
+        });
+
+        // Give it a very slight random rotation (reduced from before)
+        Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.05);
+
+        World.add(world, body);
+
+        // Track the physics box with visual dimensions for proper DOM sync
+        const boxData = { body, element: img, cookieId: dragCookie.id, visualWidth, visualHeight };
+        physicsBoxes.push(boxData);
+
+        // Allow removing by clicking
+        img.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // Remove from palletContents
+          const idx = palletContents.indexOf(boxData.cookieId);
+          if (idx > -1) {
+            palletContents.splice(idx, 1);
+          }
+          // Remove from physics
+          World.remove(world, boxData.body);
+          // Remove from tracking array
+          const boxIdx = physicsBoxes.indexOf(boxData);
+          if (boxIdx > -1) {
+            physicsBoxes.splice(boxIdx, 1);
+          }
+          // Remove DOM element
+          img.remove();
+        });
+      }
+
+      palletArea.classList.remove('drop-hover');
+      document.getElementById('draggingBox').style.display = 'none';
+      isDragging = false;
+      dragCookie = null;
+    }
+
+    // ============================================
+    // APPLY LAYOUT
+    // ============================================
+    function applyLayout() {
+      // Car
+      const car = document.getElementById('carImage');
+      car.style.left = layout.car.left + '%';
+      car.style.bottom = layout.car.bottom + '%';
+      car.style.width = layout.car.width + '%';
+
+      // Pallet
+      const palletArea = document.getElementById('palletArea');
+      palletArea.style.right = layout.pallet.right + '%';
+      palletArea.style.bottom = layout.pallet.bottom + '%';
+      palletArea.style.width = layout.pallet.width + '%';
+
+      // Cookie boxes - use scaled global size for visuals
+      const scaledSize = getScaledBoxSize();
+      cookieTypes.forEach(cookie => {
+        const box = document.getElementById(`box-${cookie.id}`);
+        if (box) {
+          box.style.left = layout.boxes[cookie.id].left + '%';
+          box.style.bottom = layout.boxes[cookie.id].bottom + '%';
+          box.style.width = scaledSize.width + 'px';
+          box.style.height = scaledSize.height + 'px';
+        }
+      });
+    }
+
+    // ============================================
+    // EVENT LISTENERS
+    // ============================================
+    document.addEventListener('touchmove', handleDragMove, { passive: false });
+    document.addEventListener('mousemove', handleDragMove);
+    document.addEventListener('touchend', handleDragEnd);
+    document.addEventListener('mouseup', handleDragEnd);
+
+    // ============================================
+    // INITIALIZE (wait for welcome screen before starting)
+    // ============================================
+    initPhysics();
+    applyLayout();
+    // Don't call showOrderForm() - wait for welcome screen button
+
+    // Handle responsive resize - update all sizes and colliders
+    const handleResize = debounce(() => {
+      // Get pallet position BEFORE updating layout (old position)
+      const palletArea = document.getElementById('palletArea');
+      const oldPalletRect = lastPalletRect || palletArea.getBoundingClientRect();
+
+      createScreenBoundaries(); // Always update screen boundaries
+      applyLayout(); // Update trunk box sizes
+
+      if (gamePhase === 'filling') {
+        // Get pallet position AFTER updating layout (new position)
+        const newPalletRect = palletArea.getBoundingClientRect();
+
+        createPalletColliders();
+
+        // Update existing dropped cookies on pallet - recreate physics bodies at new scale
+        // Convert positions relative to pallet, then back to absolute
+        const oldBoxes = [...physicsBoxes];
+        oldBoxes.forEach(item => {
+          if (item.body && item.element) {
+            // Convert old absolute position to relative position within old pallet
+            const relativeX = (item.body.position.x - oldPalletRect.left) / oldPalletRect.width;
+            const relativeY = (item.body.position.y - oldPalletRect.top) / oldPalletRect.height;
+            const currentAngle = item.body.angle;
+            const cookieId = item.cookieId;
+
+            // Remove old physics body
+            World.remove(world, item.body);
+
+            // Get new scaled sizes
+            const scaledSize = getScaledBoxSize();
+            const scaledPhysics = getScaledPhysics(cookieId);
+
+            // Convert relative position back to absolute using new pallet position
+            const newX = newPalletRect.left + relativeX * newPalletRect.width;
+            const newY = newPalletRect.top + relativeY * newPalletRect.height;
+
+            // Update DOM element size
+            item.element.style.width = scaledSize.width + 'px';
+            item.element.style.height = scaledSize.height + 'px';
+
+            // Create new physics body with scaled dimensions at new position
+            const newBody = Bodies.rectangle(newX, newY, scaledPhysics.width, scaledPhysics.height, {
+              friction: 0.8,
+              restitution: 0.05,
+              density: 0.002,
+              frictionAir: 0.02,
+              label: 'cookie-' + cookieId
+            });
+            Body.setAngle(newBody, currentAngle);
+            World.add(world, newBody);
+
+            // Update the tracked box
+            item.body = newBody;
+            item.visualWidth = scaledSize.width;
+            item.visualHeight = scaledSize.height;
+          }
+        });
+
+        // Store the new pallet rect for next resize
+        lastPalletRect = newPalletRect;
+      }
+    }, 100);
+
+    window.addEventListener('resize', handleResize);
+  </script>
+</body>
+</html>
