@@ -166,16 +166,22 @@
     }
 
     /* Individual cookie boxes in trunk */
-    .trunk-box {
+    .trunk-box-wrapper {
       position: absolute;
-      cursor: grab;
-      transition: transform 0.15s;
-      object-fit: contain;
       z-index: 6;
       pointer-events: auto;
     }
 
-    .trunk-box:hover {
+    .trunk-box {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      transition: transform 0.15s;
+      object-fit: contain;
+      display: block;
+    }
+
+    .trunk-box-wrapper:hover .trunk-box {
       transform: scale(1.1);
     }
 
@@ -183,9 +189,32 @@
       cursor: grabbing;
     }
 
-    .trunk-box.disabled {
+    .trunk-box-wrapper.disabled {
       opacity: 0.3;
       pointer-events: none;
+    }
+
+    /* Cookie name tooltip */
+    .trunk-box-wrapper .cookie-tooltip {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: bold;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+      margin-bottom: 5px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .trunk-box-wrapper:hover .cookie-tooltip {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-3px);
     }
 
     /* Pallet area (right side - drop zone) */
@@ -1283,6 +1312,12 @@
       container.innerHTML = '';
 
       cookieTypes.forEach(cookie => {
+        // Create wrapper div
+        const wrapper = document.createElement('div');
+        wrapper.className = 'trunk-box-wrapper';
+        wrapper.id = `box-wrapper-${cookie.id}`;
+
+        // Create the image
         const box = document.createElement('img');
         box.className = 'trunk-box';
         box.id = `box-${cookie.id}`;
@@ -1292,20 +1327,29 @@
         box.dataset.cookieName = cookie.name;
         box.dataset.cookieSprite = cookie.sprite;
 
+        // Create tooltip with cookie color
+        const tooltip = document.createElement('div');
+        tooltip.className = 'cookie-tooltip';
+        tooltip.textContent = cookie.name;
+        tooltip.style.backgroundColor = cookie.color;
+        tooltip.style.color = 'white';
+
         const scaledSize = getScaledBoxSize();
-        box.style.left = layout.boxes[cookie.id].left + '%';
-        box.style.bottom = layout.boxes[cookie.id].bottom + '%';
-        box.style.width = scaledSize.width + 'px';
-        box.style.height = scaledSize.height + 'px';
+        wrapper.style.left = layout.boxes[cookie.id].left + '%';
+        wrapper.style.bottom = layout.boxes[cookie.id].bottom + '%';
+        wrapper.style.width = scaledSize.width + 'px';
+        wrapper.style.height = scaledSize.height + 'px';
 
         if (gamePhase !== 'filling') {
-          box.classList.add('disabled');
+          wrapper.classList.add('disabled');
         }
 
         box.addEventListener('touchstart', handleDragStart);
         box.addEventListener('mousedown', handleDragStart);
 
-        container.appendChild(box);
+        wrapper.appendChild(tooltip);
+        wrapper.appendChild(box);
+        container.appendChild(wrapper);
       });
 
       applyLayout();
@@ -1320,7 +1364,9 @@
       e.preventDefault();
 
       const touch = e.touches ? e.touches[0] : e;
-      const box = e.target;
+      // Get the image element (might be target or need to find it in wrapper)
+      const box = e.target.classList.contains('trunk-box') ? e.target : e.target.querySelector('.trunk-box');
+      if (!box) return;
 
       isDragging = true;
       playSound('pickup'); // Play pickup sound
@@ -1472,15 +1518,15 @@
       palletArea.style.bottom = layout.pallet.bottom + '%';
       palletArea.style.width = layout.pallet.width + '%';
 
-      // Cookie boxes - use scaled global size for visuals
+      // Cookie box wrappers - use scaled global size for visuals
       const scaledSize = getScaledBoxSize();
       cookieTypes.forEach(cookie => {
-        const box = document.getElementById(`box-${cookie.id}`);
-        if (box) {
-          box.style.left = layout.boxes[cookie.id].left + '%';
-          box.style.bottom = layout.boxes[cookie.id].bottom + '%';
-          box.style.width = scaledSize.width + 'px';
-          box.style.height = scaledSize.height + 'px';
+        const wrapper = document.getElementById(`box-wrapper-${cookie.id}`);
+        if (wrapper) {
+          wrapper.style.left = layout.boxes[cookie.id].left + '%';
+          wrapper.style.bottom = layout.boxes[cookie.id].bottom + '%';
+          wrapper.style.width = scaledSize.width + 'px';
+          wrapper.style.height = scaledSize.height + 'px';
         }
       });
     }
