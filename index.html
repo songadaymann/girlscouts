@@ -118,20 +118,27 @@
     .see-order-btn {
       display: block;
       width: 100%;
-      background: #00b451;
+      background: #ff9800;
       color: white;
       border: none;
-      padding: 8px 15px;
-      font-size: 14px;
+      padding: 10px 15px;
+      font-size: 15px;
       font-family: inherit;
       font-weight: bold;
       border-radius: 6px;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: background 0.2s, transform 0.1s;
+      animation: pulse-glow 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 5px rgba(255, 152, 0, 0.5); }
+      50% { box-shadow: 0 0 15px rgba(255, 152, 0, 0.8), 0 0 25px rgba(255, 152, 0, 0.4); }
     }
 
     .see-order-btn:hover {
-      background: #009a4e;
+      background: #f57c00;
+      transform: scale(1.03);
     }
 
     .see-order-btn.hidden {
@@ -639,9 +646,9 @@
       <h1>Cookie Order Filler!</h1>
       <div class="subtitle">Help fill Girl Scout cookie orders!</div>
       <div class="instructions">
-        <p><strong>1.</strong> Memorize the customer's order - which cookies and how many of each.</p>
-        <p><strong>2.</strong> Drag cookie boxes from the car trunk to the pallet.</p>
-        <p><strong>3.</strong> Hit "DONE!" when you think you've got it right!</p>
+        <p><strong>1.</strong> Check the customer's order - which cookies and how many of each.</p>
+        <p><strong>2.</strong> Drag the right cookie boxes from the car trunk to the pallet.</p>
+        <p><strong>3.</strong> Hit "DONE!" when the order is filled!</p>
         <p><strong>Tip:</strong> Tap a box on the pallet to remove it if you make a mistake.</p>
       </div>
       <button class="play-btn" onclick="startGame()">LET'S GO!</button>
@@ -667,7 +674,7 @@
           <!-- Filled by JS -->
         </tbody>
       </table>
-      <button class="start-btn" onclick="startOrder()">MEMORIZE & START!</button>
+      <button class="start-btn" onclick="startOrder()">START FILLING!</button>
       <button class="close-peek-btn" onclick="closePeek()">Got It!</button>
     </div>
   </div>
@@ -703,7 +710,7 @@
           <div class="value" id="bestTime">--</div>
         </div>
       </div>
-      <button class="see-order-btn hidden" id="seeOrderBtn" onclick="peekOrder()">See Order</button>
+      <button class="see-order-btn hidden" id="seeOrderBtn" onclick="peekOrder()">VIEW ORDER</button>
     </div>
 
     <!-- Car with trunk (left - supply) -->
